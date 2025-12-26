@@ -1,0 +1,67 @@
+.theme-toggle-button-label {
+  /* The switch - the box around the slider */
+  font-size: 17px;
+  position: relative;
+  display: inline-block;
+  width: 7em;
+  cursor: pointer;
+  height: 44px; /* Match SVG height */
+  margin-right: 15px; /* Adjust spacing in header */
+}
+
+/* Hide default HTML checkbox */
+#theme-toggle-checkbox {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.theme-toggle-button-label svg {
+  width: 100%;
+  height: 100%;
+}
+
+#Component_15_1 #container,
+#Component_15_1 #patches circle,
+#Component_15_1 #stars path,
+#Component_15_1 .button-group,
+#Component_15_1 .sun,
+#Component_15_1 .moon,
+#Component_15_1 .cloud {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 0.25s;
+}
+
+/* Base colors for light theme */
+#Component_15_1 #container { fill: #83cbd8; } /* Day sky background */
+#Component_15_1 .sun-outer { fill: #f8e664; }
+#Component_15_1 .sun-inner-shadow { fill: rgba(246,254,247,0.29); }
+#Component_15_1 .sun-inner { fill: #fcf4b9; }
+#Component_15_1 .moon-outer { fill: #cce6ee; } /* Moon base color */
+#Component_15_1 #patches circle { fill: #a6cad0; } /* Moon patches */
+#Component_15_1 #stars path { fill: #def8ff; } /* Stars color */
+#Component_15_1 .cloud path { fill: #fff; } /* Cloud color */
+
+/* Night sky background */
+#theme-toggle-checkbox:checked + svg #Component_15_1 #container { fill: #2b4360; }
+
+/* Move button to right when checked */
+#theme-toggle-checkbox:checked + svg #Component_15_1 .button-group {
+  transform: translate(28px, 2.333px);
+}
+
+/* Show/hide sun and moon based on checkbox state */
+#Component_15_1 .sun { opacity: 1; }
+#theme-toggle-checkbox:checked + svg #Component_15_1 .sun { opacity: 0; }
+
+#Component_15_1 .moon { opacity: 0; }
+#theme-toggle-checkbox:checked + svg #Component_15_1 .moon { opacity: 1; }
+
+/* Show or hide background items on checkbox state */
+#Component_15_1 .cloud { opacity: 1; }
+#theme-toggle-checkbox:checked + svg #Component_15_1 .cloud { opacity: 0; }
+
+#Component_15_1 .stars { opacity: 0; }
+#theme-toggle-checkbox:checked + svg #Component_15_1 .stars { opacity: 1; }

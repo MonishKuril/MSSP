@@ -1,8 +1,3 @@
-# MSSP
-To start the project:
-
-chmod +x mssp-control.sh
-
-./mssp-control.sh start 
-
-./mssp-control.sh stop
+# MSSP_Cybersentinel
+./mssp-control.sh start    -to start
+./mssp-control.sh stop     -stop

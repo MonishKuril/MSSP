@@ -1,44 +1,32 @@
-
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
 const http = require('http');
+const fetch = require('node-fetch');
 const { authMiddleware } = require('../middleware/auth');
+const knex = require('../db');
+const NodeCache = require('node-cache');
 
-const getClients = () => {
-  try {
-    return require('../config/clients');
-  } catch (error) {
-    console.error('Error reading clients:', error);
-    return [];
-  }
-};
+// Cache with a 60-second TTL
+const dataCache = new NodeCache({ stdTTL: 30 });
 
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    // Debug: Log the clients data being read
-    const clients = getClients();
-    console.log("Raw clients data from file:", clients);
-    
-    // Ensure we're always returning an array
-    if (!Array.isArray(clients)) {
-      console.error("Clients data is not an array, converting...");
-      return res.json([]);
-    }
-    
-    // For superadmins/main-superadmins, return all clients
     if (req.user.role === 'superadmin' || req.user.role === 'main-superadmin') {
+      const clients = await knex('clients').select('*');
       return res.json(clients);
     }
     
-    // For regular admins, filter by adminId
-    const adminClients = clients.filter(client => 
-      client.adminId === req.user.username || 
-      client.adminId === req.user.name
-    );
-    
+    const user = await knex('users').where({ username: req.user.username }).first();
+    if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Correctly fetch clients using the client_admins join table
+    const adminClients = await knex('clients')
+      .join('client_admins', 'clients.id', '=', 'client_admins.client_id')
+      .where('client_admins.user_id', user.id)
+      .select('clients.*');
+      
     res.json(adminClients);
   } catch (error) {
     console.error('Error fetching clients:', error);
@@ -46,17 +34,22 @@ router.get('/', authMiddleware, (req, res) => {
   }
 });
 
-router.get('/:id', authMiddleware, (req, res) => {
+router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const clients = getClients();
-    const client = clients.find(c => c.id === parseInt(req.params.id));
+    const client = await knex('clients').where({ id: parseInt(req.params.id) }).first();
     
     if (!client) {
       return res.status(404).json({ success: false, message: 'Client not found' });
     }
 
-    if (req.user.role === 'admin' && client.adminId !== req.user.username) {
-      return res.status(403).json({ success: false, message: 'You are not authorized to view this client' });
+    if (req.user.role === 'admin') {
+        const user = await knex('users').where({ username: req.user.username }).first();
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        if (client.admin_id !== user.id) {
+            return res.status(403).json({ success: false, message: 'You are not authorized to view this client' });
+        }
     }
     
     res.json(client);
@@ -66,32 +59,33 @@ router.get('/:id', authMiddleware, (req, res) => {
   }
 });
 
-router.get('/:id/logs', async (req, res) => {
+router.get('/:id/logs', authMiddleware, async (req, res) => {
+  const clientId = parseInt(req.params.id);
+  const cacheKey = `logs-${clientId}`;
+
   try {
-    const clients = getClients();
-    const client = clients.find(c => c.id === parseInt(req.params.id));
+    const cachedData = dataCache.get(cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    const client = await knex('clients').where({ id: clientId }).first();
     
-    if (!client || !client.graylog) {
+    if (!client || !client.graylog_host) {
       return res.status(404).json({ success: false, message: 'Client or Graylog config not found' });
     }
     
-    const graylog = client.graylog;
     const fromDate = new Date();
     fromDate.setSeconds(fromDate.getSeconds() - 10); // 10 seconds ago
-    
     const toDate = new Date(); // now
     
-    // Format dates for Graylog API
     const fromFormatted = fromDate.toISOString();
     const toFormatted = toDate.toISOString();
     
-    // Build URL for Graylog API request
-    const apiUrl = `http://${graylog.host}/api/search/universal/absolute?query=*&from=${fromFormatted}&to=${toFormatted}&limit=0&filter=streams:${graylog.streamId}`;
+    const apiUrl = `http://${client.graylog_host}/api/search/universal/absolute?query=*&from=${fromFormatted}&to=${toFormatted}&limit=0&filter=streams:${client.graylog_stream_id}`;
     
-    // Create auth header
-    const auth = Buffer.from(`${graylog.username}:${graylog.password}`).toString('base64');
+    const auth = Buffer.from(`${client.graylog_username}:${client.graylog_password}`).toString('base64');
     
-    // Make the HTTP request to Graylog
     const requestOptions = {
       headers: {
         'Accept': 'application/json',
@@ -99,16 +93,11 @@ router.get('/:id/logs', async (req, res) => {
       }
     };
     
-    // Promise wrapper for HTTP request
     const fetchGraylogData = () => {
       return new Promise((resolve, reject) => {
         const req = http.get(apiUrl, requestOptions, (response) => {
           let data = '';
-          
-          response.on('data', (chunk) => {
-            data += chunk;
-          });
-          
+          response.on('data', (chunk) => { data += chunk; });
           response.on('end', () => {
             try {
               resolve(JSON.parse(data));
@@ -117,18 +106,14 @@ router.get('/:id/logs', async (req, res) => {
             }
           });
         });
-        
-        req.on('error', (err) => {
-          reject(err);
-        });
-        
+        req.on('error', (err) => { reject(err); });
         req.end();
       });
     };
     
     const graylogResponse = await fetchGraylogData();
     
-    res.json({
+    const responseData = {
       success: true,
       clientId: client.id,
       clientName: client.name,
@@ -137,7 +122,10 @@ router.get('/:id/logs', async (req, res) => {
         from: fromFormatted,
         to: toFormatted
       }
-    });
+    };
+    
+    dataCache.set(cacheKey, responseData);
+    res.json(responseData);
     
   } catch (error) {
     console.error('Error fetching Graylog data:', error);
@@ -145,22 +133,28 @@ router.get('/:id/logs', async (req, res) => {
   }
 });
 
-router.get('/:id/logstats', async (req, res) => {
+router.get('/:id/logstats', authMiddleware, async (req, res) => {
+  const clientId = parseInt(req.params.id);
+  const cacheKey = `logstats-${clientId}`;
+
   try {
-    const clients = getClients();
-    const client = clients.find(c => c.id === parseInt(req.params.id));
+    const cachedData = dataCache.get(cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    const client = await knex('clients').where({ id: clientId }).first();
     
-    if (!client || !client.logApi) {
+    if (!client || !client.log_api_host) {
       return res.status(404).json({ success: false, message: 'Client or Log API config not found' });
     }
 
-    // First, get the token
-    const tokenResponse = await fetch(`http://${client.logApi.host}/api/auth/login`, {
+    const tokenResponse = await fetch(`http://${client.log_api_host}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: client.logApi.username,
-        password: client.logApi.password
+        username: client.log_api_username,
+        password: client.log_api_password
       })
     });
 
@@ -169,8 +163,7 @@ router.get('/:id/logstats', async (req, res) => {
       throw new Error('Failed to get authentication token');
     }
 
-    // Then get the log stats
-    const statsResponse = await fetch(`http://${client.logApi.host}/api/logs/stats/overview?timeRange=24h`, {
+    const statsResponse = await fetch(`http://${client.log_api_host}/api/logs/stats/overview?timeRange=24h`, {
       headers: {
         'Authorization': `Bearer ${tokenData.token}`,
         'Content-Type': 'application/json'
@@ -178,10 +171,13 @@ router.get('/:id/logstats', async (req, res) => {
     });
 
     const statsData = await statsResponse.json();
-    res.json({
+    const responseData = {
       success: true,
       stats: statsData
-    });
+    };
+
+    dataCache.set(cacheKey, responseData);
+    res.json(responseData);
     
   } catch (error) {
     console.error('Error fetching log stats:', error);

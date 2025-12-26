@@ -1,0 +1,43 @@
+.form-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.form-wrapper-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.form-wrapper-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.cancel-btn {
+    background: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    color: var(--primary-text);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.cancel-btn:hover {
+    background: var(--primary-bg);
+    border-color: var(--primary-text);
+}
+
+.form-wrapper-body {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding-right: 15px; /* For scrollbar */
+    padding-bottom: 48px;
+    max-height: calc(100vh - 150px);
+}
