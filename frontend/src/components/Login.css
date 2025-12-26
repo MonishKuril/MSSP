@@ -9,7 +9,7 @@
   align-items: center;
   min-height: 100vh;
   background-color: var(--primary-bg);
-  background-image: url('/background.jpg');
+  background-image: url('../../public/background.jpg');
   overflow: hidden;
   position: relative;
 }
